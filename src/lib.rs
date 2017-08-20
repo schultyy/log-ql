@@ -27,7 +27,7 @@ impl ASTNode {
 
 fn expect_equals(actual: &lexer::LexItem) -> Result<(), String> {
     match *actual {
-        lexer::LexItem::Equals(ref eq) => {
+        lexer::LexItem::Equals(_) => {
             Ok(())
         },
         _ => {
@@ -69,7 +69,7 @@ fn parse_log_file_where_value(tokens: &Vec<lexer::LexItem>) -> Result<String, St
     }
 }
 
-fn parse_log_file(tokens: &Vec<lexer::LexItem>, pos: usize) -> Result<(ASTNode, usize), String> {
+fn parse_log_file(tokens: &Vec<lexer::LexItem>) -> Result<ASTNode, String> {
     try!(expect_identifier(&tokens[0], Some("SELECT")));
 
     let log_file_name;
@@ -82,32 +82,28 @@ fn parse_log_file(tokens: &Vec<lexer::LexItem>, pos: usize) -> Result<(ASTNode, 
         return Err(format!("Expected String, got {:?}", tokens[3]));
     }
 
-    Ok((ASTNode::new(GrammarItem::LogFile { filename: log_file_name.into(), field: log_file_field }, None, None), 3))
+    Ok(ASTNode::new(GrammarItem::LogFile { filename: log_file_name.into(), field: log_file_field }, None, None))
 }
 
-fn parse_condition(tokens: &Vec<lexer::LexItem>, pos: usize) -> Result<(ASTNode, usize), String> {
+fn parse_condition(tokens: &Vec<lexer::LexItem>) -> Result<ASTNode, String> {
     try!(expect_identifier(&tokens[4], Some("WHERE")));
     let log_file_field = try!(parse_log_file_field(&tokens, 5));
     try!(expect_equals(&tokens[6]));
     let log_where_clause_value = try!(parse_log_file_where_value(&tokens));
 
-    Ok((ASTNode::new(GrammarItem::Condition { field: log_file_field, value: log_where_clause_value }, None, None), 7))
+    Ok(ASTNode::new(GrammarItem::Condition { field: log_file_field, value: log_where_clause_value }, None, None))
 }
 
-fn parse_query(tokens: &Vec<lexer::LexItem>, pos: usize) -> Result<(ASTNode, usize), String> {
-    let (log_file_node, _) = try!(parse_log_file(&tokens, pos));
-    let (condition_node, _) = try!(parse_condition(&tokens, pos));
-    Ok((ASTNode::new(GrammarItem::Query, Some(Box::new(log_file_node)), Some(Box::new(condition_node))), tokens.len()))
+fn parse_query(tokens: &Vec<lexer::LexItem>) -> Result<ASTNode, String> {
+    let log_file_node = try!(parse_log_file(&tokens));
+    let condition_node = try!(parse_condition(&tokens));
+    Ok(ASTNode::new(GrammarItem::Query, Some(Box::new(log_file_node)), Some(Box::new(condition_node))))
 }
 
 pub fn get_ast_for_query(query: String) -> Result<ASTNode, String> {
     let tokens = try!(lexer::tokenize(&query));
 
-    parse_query(&tokens, 0).and_then(|(n, i)| if i == tokens.len() {
-        Ok(n)
-    } else {
-        Err(format!("Expected end of input, found {:?} at {}", tokens[i], i))
-    })
+    parse_query(&tokens)
 }
 
 #[cfg(test)]
