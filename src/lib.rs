@@ -42,7 +42,7 @@ fn expect_identifier(actual: &lexer::LexItem, identifier_value: Option<&str>) ->
     }
 }
 
-fn parse_query(tokens: &Vec<lexer::LexItem>, pos: usize) -> Result<(ASTNode, usize), String> {
+fn parse_log_file(tokens: &Vec<lexer::LexItem>, pos: usize) -> Result<(ASTNode, usize), String> {
     try!(expect_identifier(&tokens[0], Some("SELECT")));
 
     let log_file_field;
@@ -61,8 +61,12 @@ fn parse_query(tokens: &Vec<lexer::LexItem>, pos: usize) -> Result<(ASTNode, usi
         return Err(format!("Expected String, got {:?}", tokens[3]));
     }
 
-    let log_file_node = Some(Box::new(ASTNode::new(GrammarItem::LogFile { filename: log_file_name.into(), field: log_file_field }, None, None)));
-    Ok((ASTNode::new(GrammarItem::Query, log_file_node, None), tokens.len()))
+    Ok((ASTNode::new(GrammarItem::LogFile { filename: log_file_name.into(), field: log_file_field }, None, None), 3))
+}
+
+fn parse_query(tokens: &Vec<lexer::LexItem>, pos: usize) -> Result<(ASTNode, usize), String> {
+    let (log_file_node, _) = try!(parse_log_file(&tokens, pos));
+    Ok((ASTNode::new(GrammarItem::Query, Some(Box::new(log_file_node)), None), tokens.len()))
 }
 
 pub fn get_ast_for_query(query: String) -> Result<ASTNode, String> {
