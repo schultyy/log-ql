@@ -6,6 +6,7 @@ pub enum LexItem {
   Identifier(String),
   Str(String),
   Equals(char),
+  Number(i64)
 }
 
 fn consume_string<T: Iterator<Item = char>>(iter: &mut Peekable<T>) -> String {
@@ -38,6 +39,15 @@ fn consume_identifier<T: Iterator<Item = char>>(iter: &mut Peekable<T>) -> Strin
   resulting_str
 }
 
+fn consume_number<T: Iterator<Item = char>>(c: char, iter: &mut Peekable<T>) -> i64 {
+    let mut number = c.to_string().parse::<i64>().expect("Expected digit");
+    while let Some(Ok(digit)) = iter.peek().map(|c| c.to_string().parse::<i64>()) {
+        number = number * 10 + digit;
+        iter.next();
+    }
+    number
+}
+
 pub fn tokenize(input: &String) -> Result<Vec<LexItem>, String> {
   let mut result = Vec::new();
 
@@ -45,6 +55,11 @@ pub fn tokenize(input: &String) -> Result<Vec<LexItem>, String> {
 
   while let Some(&ch) = it.peek() {
     match ch {
+      '0'...'9' => {
+        it.next();
+        let n = consume_number(ch, &mut it);
+        result.push(LexItem::Number(n));
+      },
       '\'' => {
         it.next();
         let string = consume_string(&mut it);
@@ -96,5 +111,17 @@ mod tests {
     assert_eq!(results[5], super::LexItem::Identifier("type".into()));
     assert_eq!(results[6], super::LexItem::Equals('='.into()));
     assert_eq!(results[7], super::LexItem::Str("error".into()));
+  }
+
+  #[test]
+  fn it_tokenizes_simple_select_with_limit() {
+    let results = tokenize(&"SELECT type FROM 'app.log' LIMIT 10".into()).unwrap();
+    assert_eq!(results[0], super::LexItem::Identifier("SELECT".into()));
+    assert_eq!(results[1], super::LexItem::Identifier("type".into()));
+    assert_eq!(results[2], super::LexItem::Identifier("FROM".into()));
+    assert_eq!(results[3], super::LexItem::Str("app.log".into()));
+
+    assert_eq!(results[4], super::LexItem::Identifier("LIMIT".into()));
+    assert_eq!(results[5], super::LexItem::Number(10));
   }
 }
