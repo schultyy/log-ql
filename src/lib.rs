@@ -10,9 +10,9 @@ pub enum GrammarItem {
 
 #[derive(Debug)]
 pub struct ASTNode {
-    left: Option<Box<ASTNode>>,
-    right: Option<Box<ASTNode>>,
-    entry: GrammarItem,
+    pub left: Option<Box<ASTNode>>,
+    pub right: Option<Box<ASTNode>>,
+    pub entry: GrammarItem,
 }
 
 impl ASTNode {
