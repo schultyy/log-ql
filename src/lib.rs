@@ -5,7 +5,7 @@ mod lexer;
 pub enum GrammarItem {
     Query,
     LogFile { field: String, filename: String },
-    Condition
+    Condition { field: String, value: String }
 }
 
 #[derive(Debug)]
@@ -21,6 +21,17 @@ impl ASTNode {
             entry: entry,
             left: left,
             right: right
+        }
+    }
+}
+
+fn expect_equals(actual: &lexer::LexItem) -> Result<(), String> {
+    match *actual {
+        lexer::LexItem::Equals(ref eq) => {
+            Ok(())
+        },
+        _ => {
+            Err(format!("Expected assign, got {:?}", actual))
         }
     }
 }
@@ -42,17 +53,27 @@ fn expect_identifier(actual: &lexer::LexItem, identifier_value: Option<&str>) ->
     }
 }
 
+fn parse_log_file_field(tokens: &Vec<lexer::LexItem>, index: usize) -> Result<String, String> {
+    if let &lexer::LexItem::Identifier(ref s) = &tokens[index] {
+        Ok(s.clone())
+    } else {
+        Err(format!("Expected Identifier, got {:?}", tokens[index]))
+    }
+}
+
+fn parse_log_file_where_value(tokens: &Vec<lexer::LexItem>) -> Result<String, String> {
+    if let &lexer::LexItem::Str(ref s) = &tokens[7] {
+        Ok(s.clone())
+    } else {
+        Err(format!("Expected String, got {:?}", tokens[7]))
+    }
+}
+
 fn parse_log_file(tokens: &Vec<lexer::LexItem>, pos: usize) -> Result<(ASTNode, usize), String> {
     try!(expect_identifier(&tokens[0], Some("SELECT")));
 
-    let log_file_field;
     let log_file_name;
-
-    if let &lexer::LexItem::Identifier(ref s) = &tokens[1] {
-        log_file_field = s.clone();
-    } else {
-        return Err(format!("Expected Identifier, got {:?}", tokens[1]));
-    }
+    let log_file_field = try!(parse_log_file_field(&tokens, 1));
 
     try!(expect_identifier(&tokens[2], Some("FROM")));
     if let &lexer::LexItem::Str(ref s) = &tokens[3] {
@@ -64,9 +85,19 @@ fn parse_log_file(tokens: &Vec<lexer::LexItem>, pos: usize) -> Result<(ASTNode, 
     Ok((ASTNode::new(GrammarItem::LogFile { filename: log_file_name.into(), field: log_file_field }, None, None), 3))
 }
 
+fn parse_condition(tokens: &Vec<lexer::LexItem>, pos: usize) -> Result<(ASTNode, usize), String> {
+    try!(expect_identifier(&tokens[4], Some("WHERE")));
+    let log_file_field = try!(parse_log_file_field(&tokens, 5));
+    try!(expect_equals(&tokens[6]));
+    let log_where_clause_value = try!(parse_log_file_where_value(&tokens));
+
+    Ok((ASTNode::new(GrammarItem::Condition { field: log_file_field, value: log_where_clause_value }, None, None), 7))
+}
+
 fn parse_query(tokens: &Vec<lexer::LexItem>, pos: usize) -> Result<(ASTNode, usize), String> {
     let (log_file_node, _) = try!(parse_log_file(&tokens, pos));
-    Ok((ASTNode::new(GrammarItem::Query, Some(Box::new(log_file_node)), None), tokens.len()))
+    let (condition_node, _) = try!(parse_condition(&tokens, pos));
+    Ok((ASTNode::new(GrammarItem::Query, Some(Box::new(log_file_node)), Some(Box::new(condition_node))), tokens.len()))
 }
 
 pub fn get_ast_for_query(query: String) -> Result<ASTNode, String> {
@@ -89,5 +120,6 @@ mod tests {
         let ast = get_ast_for_query(query).unwrap();
         assert_eq!(ast.entry, GrammarItem::Query);
         assert_eq!(ast.left.unwrap().entry, GrammarItem::LogFile { filename: "app.log".into(), field: "title".into() });
+        assert_eq!(ast.right.unwrap().entry, GrammarItem::Condition { field: "severity".into(), value: "error".into() });
     }
 }
