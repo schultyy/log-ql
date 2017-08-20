@@ -1,0 +1,9 @@
+log-ql grammar:
+
+query: select;
+
+select: 'SELECT' fields 'FROM' String where_clause;
+fields: field (',' field)*;
+field: Identifier;
+String: '\'' Identifier '\'';
+where_clause: Identifier '=' String;
