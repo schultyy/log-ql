@@ -5,7 +5,7 @@ use lexer::LexItem;
 #[derive(PartialEq)]
 pub enum GrammarItem {
     Query,
-    LogFile { field: String, filename: String },
+    LogFile { fields: Vec<String>, filename: String },
     Condition { field: String, value: String }
 }
 
@@ -45,7 +45,11 @@ impl Parser {
         &self.token_stream[self.token_index]
     }
 
-    fn next_token(&mut self) {
+    fn next_token(&self) -> &lexer::LexItem {
+        &self.token_stream[self.token_index + 1]
+    }
+
+    fn consume_token(&mut self) {
         self.token_index += 1;
     }
 
@@ -87,31 +91,31 @@ impl Parser {
 
     fn parse_log_file(&mut self) -> Result<ASTNode, String> {
         let log_file_name;
-        let log_file_field = try!(self.expect_select_field_list());
-        self.next_token();
+        let log_file_fields = try!(self.expect_select_field_list());
+        self.consume_token();
 
         try!(self.expect_identifier(Some("FROM")));
-        self.next_token();
+        self.consume_token();
         if let &lexer::LexItem::Str(ref s) = self.current_token() {
             log_file_name = s.clone();
         } else {
             return Err(format!("Expected String, got {:?}", self.current_token()));
         }
 
-        self.next_token();
+        self.consume_token();
 
-        Ok(ASTNode::new(GrammarItem::LogFile { filename: log_file_name.into(), field: log_file_field[0].clone() }, None, None))
+        Ok(ASTNode::new(GrammarItem::LogFile { filename: log_file_name.into(), fields: log_file_fields }, None, None))
     }
 
     fn parse_condition(&mut self) -> Result<ASTNode, String> {
         try!(self.expect_identifier(Some("WHERE")));
-        self.next_token();
+        self.consume_token();
         let log_file_field = try!(self.expect_identifier(None));
-        self.next_token();
+        self.consume_token();
         try!(self.expect_equals());
-        self.next_token();
+        self.consume_token();
         let log_where_clause_value = try!(self.parse_log_file_where_value());
-        self.next_token();
+        self.consume_token();
 
         Ok(ASTNode::new(GrammarItem::Condition { field: log_file_field, value: log_where_clause_value }, None, None))
     }
@@ -126,12 +130,25 @@ impl Parser {
                         return Err("Expected Select Identifier, got keyword FROM".into());
                     }
                     select_fields.push(identifier.clone());
-                    break;
+                    if let &LexItem::Identifier(ref possible_from) = self.next_token() {
+                        if possible_from == "FROM" {
+                            break;
+                        }
+                    }
+                },
+                &LexItem::Comma(_) => {
+                    if let &LexItem::Identifier(ref possible_from) = self.next_token() {
+                        if possible_from == "FROM" {
+                            return Err("Expected Identifier, got keyword FROM".into());
+                        }
+                    } else {
+                        return Err(format!("Expected Identifier, got {:?}", self.next_token()));
+                    }
                 },
                 _ => return Err(format!("Expected Identifier, got {:?}", self.current_token()))
             }
 
-            self.token_index += 1;
+            self.consume_token();
         }
 
         Ok(select_fields)
@@ -142,7 +159,7 @@ impl Parser {
         self.token_index = 0;
 
         try!(self.expect_identifier(Some("SELECT")));
-        self.next_token();
+        self.consume_token();
 
         let log_file_node = try!(self.parse_log_file());
         let condition_node = try!(self.parse_condition());
@@ -161,7 +178,17 @@ mod tests {
         let mut parser = Parser::new(query);
         let ast = parser.parse().unwrap();
         assert_eq!(ast.entry, GrammarItem::Query);
-        assert_eq!(ast.left.unwrap().entry, GrammarItem::LogFile { filename: "app.log".into(), field: "title".into() });
+        assert_eq!(ast.left.unwrap().entry, GrammarItem::LogFile { filename: "app.log".into(), fields: vec!("title".into()) });
+        assert_eq!(ast.right.unwrap().entry, GrammarItem::Condition { field: "severity".into(), value: "error".into() });
+    }
+
+    #[test]
+    fn it_delivers_tree_for_query_with_multiple_select_fields() {
+        let query = "SELECT title, severity, date FROM 'app.log' WHERE severity = 'error'".into();
+        let mut parser = Parser::new(query);
+        let ast = parser.parse().unwrap();
+        assert_eq!(ast.entry, GrammarItem::Query);
+        assert_eq!(ast.left.unwrap().entry, GrammarItem::LogFile { filename: "app.log".into(), fields: vec!("title".into(), "severity".into(), "date".into()) });
         assert_eq!(ast.right.unwrap().entry, GrammarItem::Condition { field: "severity".into(), value: "error".into() });
     }
 }
