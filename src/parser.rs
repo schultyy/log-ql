@@ -41,12 +41,20 @@ impl Parser {
         }
     }
 
-    fn current_token(&self) -> &lexer::LexItem {
-        &self.token_stream[self.token_index]
+    fn current_token(&self) -> Option<&lexer::LexItem> {
+        if self.token_index < self.token_stream.len() {
+            Some(&self.token_stream[self.token_index])
+        } else {
+            None
+        }
     }
 
-    fn next_token(&self) -> &lexer::LexItem {
-        &self.token_stream[self.token_index + 1]
+    fn next_token(&self) -> Option<&lexer::LexItem> {
+        if self.token_index + 1 < self.token_stream.len() {
+            Some(&self.token_stream[self.token_index + 1])
+        } else {
+            None
+        }
     }
 
     fn consume_token(&mut self) {
@@ -54,19 +62,23 @@ impl Parser {
     }
 
     fn expect_equals(&self) -> Result<(), String> {
-        match *self.current_token() {
-            lexer::LexItem::Equals(_) => {
-                Ok(())
-            },
-            _ => {
-                Err(format!("Expected assign, got {:?}", self.current_token()))
+        if let Some(current_token) = self.current_token() {
+            match *current_token {
+                lexer::LexItem::Equals(_) => {
+                    Ok(())
+                },
+                _ => {
+                    Err(format!("Expected assign, got {:?}", self.current_token()))
+                }
             }
+        } else {
+            Err("Expected assign, got EOF".into())
         }
     }
 
     fn expect_identifier(&self, identifier_value: Option<&str>) -> Result<String, String> {
         match self.current_token() {
-            &lexer::LexItem::Identifier(ref identifier) => {
+            Some(&lexer::LexItem::Identifier(ref identifier)) => {
                 if identifier_value.is_some() {
                     if identifier_value.unwrap() == identifier {
                         Ok(identifier.clone())
@@ -82,7 +94,7 @@ impl Parser {
     }
 
     fn parse_log_file_where_value(&self) -> Result<String, String> {
-        if let &lexer::LexItem::Str(ref s) = self.current_token() {
+        if let Some(&lexer::LexItem::Str(ref s)) = self.current_token() {
             Ok(s.clone())
         } else {
             Err(format!("Expected String, got {:?}", self.current_token()))
@@ -96,7 +108,7 @@ impl Parser {
 
         try!(self.expect_identifier(Some("FROM")));
         self.consume_token();
-        if let &lexer::LexItem::Str(ref s) = self.current_token() {
+        if let Some(&lexer::LexItem::Str(ref s)) = self.current_token() {
             log_file_name = s.clone();
         } else {
             return Err(format!("Expected String, got {:?}", self.current_token()));
@@ -125,19 +137,19 @@ impl Parser {
 
         while self.token_index < self.token_stream.len() {
             match self.current_token() {
-                &LexItem::Identifier(ref identifier) => {
+                Some(&LexItem::Identifier(ref identifier)) => {
                     if identifier == "FROM" {
                         return Err("Expected Select Identifier, got keyword FROM".into());
                     }
                     select_fields.push(identifier.clone());
-                    if let &LexItem::Identifier(ref possible_from) = self.next_token() {
+                    if let Some(&LexItem::Identifier(ref possible_from)) = self.next_token() {
                         if possible_from == "FROM" {
                             break;
                         }
                     }
                 },
-                &LexItem::Comma(_) => {
-                    if let &LexItem::Identifier(ref possible_from) = self.next_token() {
+                Some(&LexItem::Comma(_)) => {
+                    if let Some(&LexItem::Identifier(ref possible_from)) = self.next_token() {
                         if possible_from == "FROM" {
                             return Err("Expected Identifier, got keyword FROM".into());
                         }
@@ -219,6 +231,14 @@ mod tests {
     #[test]
     fn it_fails_when_where_keyword_is_missing() {
         let query = "SELECT title, severity, date FROM 'app.log' severity = 'error'".into();
+        let mut parser = Parser::new(query);
+        let ast = parser.parse();
+        assert!(ast.is_err());
+    }
+
+    #[test]
+    fn it_fails_when_where_clause_is_missing() {
+        let query = "SELECT title, severity, date FROM 'app.log'".into();
         let mut parser = Parser::new(query);
         let ast = parser.parse();
         assert!(ast.is_err());
