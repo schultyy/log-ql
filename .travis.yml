@@ -1,9 +1,10 @@
 language: rust
+cache: cargo
 dist: trusty
+
+
+# run builds for both all the trains
 rust:
   - stable
   - beta
   - nightly
-matrix:
-  allow_failures:
-- rust: nightly

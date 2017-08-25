@@ -6,7 +6,8 @@ pub enum LexItem {
   Identifier(String),
   Str(String),
   Equals(char),
-  Number(i64)
+  Number(i64),
+  Comma(char)
 }
 
 fn consume_string<T: Iterator<Item = char>>(iter: &mut Peekable<T>) -> String {
@@ -70,12 +71,15 @@ pub fn tokenize(input: &String) -> Result<Vec<LexItem>, String> {
         result.push(LexItem::Equals('='));
         it.next();
       },
+      ',' => {
+        result.push(LexItem::Comma(','));
+        it.next();
+      },
       ' ' => { it.next(); },
       _ => {
         if ch.is_alphabetic() {
           let string = consume_identifier(&mut it);
           result.push(LexItem::Identifier(string));
-          it.next();
         } else {
           return Err(format!("Unexpected char {}", ch));
         }
@@ -123,5 +127,20 @@ mod tests {
 
     assert_eq!(results[4], super::LexItem::Identifier("LIMIT".into()));
     assert_eq!(results[5], super::LexItem::Number(10));
+  }
+
+  #[test]
+  fn it_tokenizes_select_with_multiple_select_fields() {
+    let results = tokenize(&"SELECT type, date, severity FROM 'app.log' LIMIT 10".into()).unwrap();
+    assert_eq!(results[0], super::LexItem::Identifier("SELECT".into()));
+    assert_eq!(results[1], super::LexItem::Identifier("type".into()));
+    assert_eq!(results[2], super::LexItem::Comma(','.into()));
+    assert_eq!(results[3], super::LexItem::Identifier("date".into()));
+    assert_eq!(results[4], super::LexItem::Comma(','.into()));
+    assert_eq!(results[5], super::LexItem::Identifier("severity".into()));
+    assert_eq!(results[6], super::LexItem::Identifier("FROM".into()));
+    assert_eq!(results[7], super::LexItem::Str("app.log".into()));
+    assert_eq!(results[8], super::LexItem::Identifier("LIMIT".into()));
+    assert_eq!(results[9], super::LexItem::Number(10));
   }
 }
