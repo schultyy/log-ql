@@ -191,4 +191,36 @@ mod tests {
         assert_eq!(ast.left.unwrap().entry, GrammarItem::LogFile { filename: "app.log".into(), fields: vec!("title".into(), "severity".into(), "date".into()) });
         assert_eq!(ast.right.unwrap().entry, GrammarItem::Condition { field: "severity".into(), value: "error".into() });
     }
+
+    #[test]
+    fn it_fails_when_select_field_is_missing() {
+        let query = "SELECT  FROM 'app.log' WHERE severity = 'error'".into();
+        let mut parser = Parser::new(query);
+        let ast = parser.parse();
+        assert!(ast.is_err());
+    }
+
+    #[test]
+    fn it_fails_when_from_keyword_is_missing() {
+        let query = "SELECT title, severity, date 'app.log' WHERE severity = 'error'".into();
+        let mut parser = Parser::new(query);
+        let ast = parser.parse();
+        assert!(ast.is_err());
+    }
+
+    #[test]
+    fn it_fails_when_filename_is_missing() {
+        let query = "SELECT title, severity, date FROM WHERE severity = 'error'".into();
+        let mut parser = Parser::new(query);
+        let ast = parser.parse();
+        assert!(ast.is_err());
+    }
+
+    #[test]
+    fn it_fails_when_where_keyword_is_missing() {
+        let query = "SELECT title, severity, date FROM 'app.log' severity = 'error'".into();
+        let mut parser = Parser::new(query);
+        let ast = parser.parse();
+        assert!(ast.is_err());
+    }
 }
