@@ -7,7 +7,14 @@ pub enum GrammarItem {
     Query,
     LogFile { fields: Vec<String>, filename: String },
     Condition { field: String, value: String },
-    Limit { number_of_rows: i64 }
+    Limit { number_of_rows: i64, direction: LimitDirection }
+}
+
+#[derive(Debug)]
+#[derive(PartialEq)]
+pub enum LimitDirection {
+    First,
+    Last
 }
 
 #[derive(Debug)]
@@ -153,8 +160,17 @@ impl Parser {
     fn parse_limit(&mut self) -> Result<ASTNode, String> {
         try!(self.expect_identifier(Some("LIMIT")));
         self.consume_token();
+        let direction;
+        if let Ok(_) = self.expect_identifier(Some("LAST")) {
+            direction = LimitDirection::Last;
+            self.consume_token();
+        } else {
+            direction = LimitDirection::First;
+        }
+
         let number_of_rows = try!(self.expect_number(None));
-        Ok(ASTNode::new(GrammarItem::Limit { number_of_rows: number_of_rows }, None, None))
+
+        Ok(ASTNode::new(GrammarItem::Limit { number_of_rows: number_of_rows, direction: direction }, None, None))
     }
 
     fn expect_select_field_list(&mut self) -> Result<Vec<String>, String> {
@@ -283,7 +299,7 @@ mod tests {
 
         let ast = parser.parse();
         assert!(ast.is_ok());
-        assert_eq!(ast.unwrap().right.unwrap().entry, GrammarItem::Limit { number_of_rows: 10 });
+        assert_eq!(ast.unwrap().right.unwrap().entry, GrammarItem::Limit { number_of_rows: 10, direction: LimitDirection::First });
     }
 
     #[test]
@@ -293,5 +309,15 @@ mod tests {
 
         let ast = parser.parse();
         assert!(ast.is_err());
+    }
+
+    #[test]
+    fn it_produces_ast_for_select_with_limit_last_10() {
+        let query = "SELECT title, severity, date FROM 'app.log' LIMIT LAST 10".into();
+        let mut parser = Parser::new(query);
+        let ast = parser.parse();
+
+        assert!(ast.is_ok());
+        assert_eq!(ast.unwrap().right.unwrap().entry, GrammarItem::Limit { number_of_rows: 10, direction: LimitDirection::Last });
     }
 }
