@@ -64,7 +64,7 @@ impl Parser {
     fn expect_equals(&self) -> Result<(), String> {
         if let Some(current_token) = self.current_token() {
             match *current_token {
-                lexer::LexItem::Equals(_) => {
+                lexer::LexItem::Equals => {
                     Ok(())
                 },
                 _ => {
@@ -148,7 +148,7 @@ impl Parser {
                         }
                     }
                 },
-                Some(&LexItem::Comma(_)) => {
+                Some(&LexItem::Comma) => {
                     if let Some(&LexItem::Identifier(ref possible_from)) = self.next_token() {
                         if possible_from == "FROM" {
                             return Err("Expected Identifier, got keyword FROM".into());

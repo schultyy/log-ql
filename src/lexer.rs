@@ -5,9 +5,9 @@ use std::iter::Peekable;
 pub enum LexItem {
   Identifier(String),
   Str(String),
-  Equals(char),
+  Equals,
   Number(i64),
-  Comma(char)
+  Comma
 }
 
 fn consume_string<T: Iterator<Item = char>>(iter: &mut Peekable<T>) -> String {
@@ -68,11 +68,11 @@ pub fn tokenize(input: &String) -> Result<Vec<LexItem>, String> {
         it.next();
       },
       '=' => {
-        result.push(LexItem::Equals('='));
+        result.push(LexItem::Equals);
         it.next();
       },
       ',' => {
-        result.push(LexItem::Comma(','));
+        result.push(LexItem::Comma);
         it.next();
       },
       ' ' => { it.next(); },
@@ -113,7 +113,7 @@ mod tests {
 
     assert_eq!(results[4], super::LexItem::Identifier("WHERE".into()));
     assert_eq!(results[5], super::LexItem::Identifier("type".into()));
-    assert_eq!(results[6], super::LexItem::Equals('='.into()));
+    assert_eq!(results[6], super::LexItem::Equals);
     assert_eq!(results[7], super::LexItem::Str("error".into()));
   }
 
@@ -134,9 +134,9 @@ mod tests {
     let results = tokenize(&"SELECT type, date, severity FROM 'app.log' LIMIT 10".into()).unwrap();
     assert_eq!(results[0], super::LexItem::Identifier("SELECT".into()));
     assert_eq!(results[1], super::LexItem::Identifier("type".into()));
-    assert_eq!(results[2], super::LexItem::Comma(','.into()));
+    assert_eq!(results[2], super::LexItem::Comma);
     assert_eq!(results[3], super::LexItem::Identifier("date".into()));
-    assert_eq!(results[4], super::LexItem::Comma(','.into()));
+    assert_eq!(results[4], super::LexItem::Comma);
     assert_eq!(results[5], super::LexItem::Identifier("severity".into()));
     assert_eq!(results[6], super::LexItem::Identifier("FROM".into()));
     assert_eq!(results[7], super::LexItem::Str("app.log".into()));
