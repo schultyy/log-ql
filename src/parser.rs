@@ -7,7 +7,7 @@ pub enum GrammarItem {
     Query,
     LogFile { fields: Vec<String>, filename: String },
     Condition { field: String, value: String },
-    Limit
+    Limit { number_of_rows: i64 }
 }
 
 #[derive(Debug)]
@@ -94,6 +94,23 @@ impl Parser {
         }
     }
 
+    fn expect_number(&self, expected_number: Option<i64>) -> Result<i64, String> {
+        match self.current_token() {
+            Some(&lexer::LexItem::Number(ref num)) => {
+                if expected_number.is_some() {
+                    if &expected_number.unwrap() == num {
+                        Ok(num.clone())
+                    } else {
+                        Err(format!("Expected Number {:?}, got {:?}", expected_number.unwrap(), self.current_token()))
+                    }
+                } else {
+                    Ok(num.clone())
+                }
+            },
+            _ => { Err(format!("Expected Number, got {:?}", self.current_token())) }
+        }
+    }
+
     fn parse_log_file_where_value(&self) -> Result<String, String> {
         if let Some(&lexer::LexItem::Str(ref s)) = self.current_token() {
             Ok(s.clone())
@@ -136,7 +153,8 @@ impl Parser {
     fn parse_limit(&mut self) -> Result<ASTNode, String> {
         try!(self.expect_identifier(Some("LIMIT")));
         self.consume_token();
-        Ok(ASTNode::new(GrammarItem::Limit, None, None))
+        let number_of_rows = try!(self.expect_number(None));
+        Ok(ASTNode::new(GrammarItem::Limit { number_of_rows: number_of_rows }, None, None))
     }
 
     fn expect_select_field_list(&mut self) -> Result<Vec<String>, String> {
@@ -265,6 +283,15 @@ mod tests {
 
         let ast = parser.parse();
         assert!(ast.is_ok());
-        assert_eq!(ast.unwrap().right.unwrap().entry, GrammarItem::Limit);
+        assert_eq!(ast.unwrap().right.unwrap().entry, GrammarItem::Limit { number_of_rows: 10 });
+    }
+
+    #[test]
+    fn it_fails_when_limit_does_not_have_a_number() {
+        let query = "SELECT title, severity, date FROM 'app.log' LIMIT".into();
+        let mut parser = Parser::new(query);
+
+        let ast = parser.parse();
+        assert!(ast.is_err());
     }
 }
