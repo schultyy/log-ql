@@ -6,7 +6,8 @@ use lexer::LexItem;
 pub enum GrammarItem {
     Query,
     LogFile { fields: Vec<String>, filename: String },
-    Condition { field: String, value: String }
+    Condition { field: String, value: String },
+    Limit
 }
 
 #[derive(Debug)]
@@ -132,6 +133,12 @@ impl Parser {
         Ok(ASTNode::new(GrammarItem::Condition { field: log_file_field, value: log_where_clause_value }, None, None))
     }
 
+    fn parse_limit(&mut self) -> Result<ASTNode, String> {
+        try!(self.expect_identifier(Some("LIMIT")));
+        self.consume_token();
+        Ok(ASTNode::new(GrammarItem::Limit, None, None))
+    }
+
     fn expect_select_field_list(&mut self) -> Result<Vec<String>, String> {
         let mut select_fields = vec!();
 
@@ -174,9 +181,16 @@ impl Parser {
         self.consume_token();
 
         let log_file_node = try!(self.parse_log_file());
-        let condition_node = try!(self.parse_condition());
+        let condition_or_limit;
 
-        Ok(ASTNode::new(GrammarItem::Query, Some(Box::new(log_file_node)), Some(Box::new(condition_node))))
+        if let Ok(_) = self.expect_identifier(Some("WHERE".into())) {
+            condition_or_limit = try!(self.parse_condition());
+        } else {
+            condition_or_limit = try!(self.parse_limit());
+        }
+
+
+        Ok(ASTNode::new(GrammarItem::Query, Some(Box::new(log_file_node)), Some(Box::new(condition_or_limit))))
     }
 }
 
@@ -242,5 +256,15 @@ mod tests {
         let mut parser = Parser::new(query);
         let ast = parser.parse();
         assert!(ast.is_err());
+    }
+
+    #[test]
+    fn it_produces_ast_for_select_with_limit_10() {
+        let query = "SELECT title, severity, date FROM 'app.log' LIMIT 10".into();
+        let mut parser = Parser::new(query);
+
+        let ast = parser.parse();
+        assert!(ast.is_ok());
+        assert_eq!(ast.unwrap().right.unwrap().entry, GrammarItem::Limit);
     }
 }
