@@ -381,4 +381,12 @@ mod tests {
         assert_eq!(left_result_node.entry, GrammarItem::Condition { field: "title".into(), value: "Network connection failed".into() });
         assert_eq!(right_result_node.entry, GrammarItem::Limit { number_of_rows: 10, direction: LimitDirection::Last });
     }
+
+    #[test]
+    fn it_returns_error_for_query_with_limit_and_where_in_the_wrong_order() {
+        let query = "SELECT title, severity FROM 'app.log' LIMIT LAST 10 WHERE title = 'Network connection failed'".into();
+        let mut parser = Parser::new(query);
+        let expected_err = parser.parse();
+        assert!(expected_err.is_err());
+    }
 }
