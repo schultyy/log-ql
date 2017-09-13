@@ -3,21 +3,25 @@ use lexer::LexItem;
 
 #[derive(Debug)]
 #[derive(PartialEq)]
+#[derive(Clone)]
 pub enum GrammarItem {
     Query,
     LogFile { fields: Vec<String>, filename: String },
     Condition { field: String, value: String },
-    Limit { number_of_rows: i64, direction: LimitDirection }
+    Limit { number_of_rows: i64, direction: LimitDirection },
+    LogResult
 }
 
 #[derive(Debug)]
 #[derive(PartialEq)]
+#[derive(Clone)]
 pub enum LimitDirection {
     First,
     Last
 }
 
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct ASTNode {
     pub left: Option<Box<ASTNode>>,
     pub right: Option<Box<ASTNode>>,
@@ -67,6 +71,21 @@ impl Parser {
 
     fn consume_token(&mut self) {
         self.token_index += 1;
+    }
+
+    fn expect_eof(&self) -> Result<(), String> {
+        if let Some(current_token) = self.current_token() {
+            match *current_token {
+                lexer::LexItem::EOF => {
+                    Ok(())
+                },
+                _ => {
+                    Err(format!("Expected EOF, got {:?}", self.current_token()))
+                }
+            }
+        } else {
+            Err(format!("Expected EOF, got {:?}", self.current_token()))
+        }
     }
 
     fn expect_equals(&self) -> Result<(), String> {
@@ -215,16 +234,32 @@ impl Parser {
         self.consume_token();
 
         let log_file_node = try!(self.parse_log_file());
-        let condition_or_limit;
+        let condition;
+        let limit;
 
         if let Ok(_) = self.expect_identifier(Some("WHERE".into())) {
-            condition_or_limit = try!(self.parse_condition());
+            condition = Some(Box::new(try!(self.parse_condition())));
         } else {
-            condition_or_limit = try!(self.parse_limit());
+            condition = None;
         }
 
+        if let Ok(_) = self.expect_identifier(Some("LIMIT".into())) {
+            limit = Some(Box::new(try!(self.parse_limit())));
+            self.consume_token();
+        } else {
+            limit = None;
+        }
 
-        Ok(ASTNode::new(GrammarItem::Query, Some(Box::new(log_file_node)), Some(Box::new(condition_or_limit))))
+        try!(self.expect_eof());
+
+        let log_result_node;
+        if condition.is_some() || limit.is_some() {
+            log_result_node = Some(Box::new(ASTNode::new(GrammarItem::LogResult, condition, limit)));
+        } else {
+            log_result_node = None;
+        }
+
+        Ok(ASTNode::new(GrammarItem::Query, Some(Box::new(log_file_node)), log_result_node))
     }
 }
 
@@ -239,7 +274,8 @@ mod tests {
         let ast = parser.parse().unwrap();
         assert_eq!(ast.entry, GrammarItem::Query);
         assert_eq!(ast.left.unwrap().entry, GrammarItem::LogFile { filename: "app.log".into(), fields: vec!("title".into()) });
-        assert_eq!(ast.right.unwrap().entry, GrammarItem::Condition { field: "severity".into(), value: "error".into() });
+        let right_node = ast.right.unwrap();
+        assert_eq!(right_node.left.unwrap().entry, GrammarItem::Condition { field: "severity".into(), value: "error".into() });
     }
 
     #[test]
@@ -249,7 +285,8 @@ mod tests {
         let ast = parser.parse().unwrap();
         assert_eq!(ast.entry, GrammarItem::Query);
         assert_eq!(ast.left.unwrap().entry, GrammarItem::LogFile { filename: "app.log".into(), fields: vec!("title".into(), "severity".into(), "date".into()) });
-        assert_eq!(ast.right.unwrap().entry, GrammarItem::Condition { field: "severity".into(), value: "error".into() });
+        let right_node = ast.right.unwrap();
+        assert_eq!(right_node.left.unwrap().entry, GrammarItem::Condition { field: "severity".into(), value: "error".into() });
     }
 
     #[test]
@@ -285,11 +322,15 @@ mod tests {
     }
 
     #[test]
-    fn it_fails_when_where_clause_is_missing() {
+    fn it_does_not_fail_when_where_clause_is_missing() {
         let query = "SELECT title, severity, date FROM 'app.log'".into();
         let mut parser = Parser::new(query);
         let ast = parser.parse();
-        assert!(ast.is_err());
+        let left_ast = ast.clone();
+        let right_ast = ast.clone();
+
+        assert!(left_ast.unwrap().left.is_some());
+        assert!(right_ast.unwrap().right.is_none());
     }
 
     #[test]
@@ -299,7 +340,8 @@ mod tests {
 
         let ast = parser.parse();
         assert!(ast.is_ok());
-        assert_eq!(ast.unwrap().right.unwrap().entry, GrammarItem::Limit { number_of_rows: 10, direction: LimitDirection::First });
+        let right_node = ast.unwrap().right.unwrap();
+        assert_eq!(right_node.right.unwrap().entry, GrammarItem::Limit { number_of_rows: 10, direction: LimitDirection::First });
     }
 
     #[test]
@@ -316,8 +358,27 @@ mod tests {
         let query = "SELECT title, severity, date FROM 'app.log' LIMIT LAST 10".into();
         let mut parser = Parser::new(query);
         let ast = parser.parse();
-
         assert!(ast.is_ok());
-        assert_eq!(ast.unwrap().right.unwrap().entry, GrammarItem::Limit { number_of_rows: 10, direction: LimitDirection::Last });
+        let right_node = ast.unwrap().right.unwrap();
+        assert_eq!(right_node.right.unwrap().entry, GrammarItem::Limit { number_of_rows: 10, direction: LimitDirection::Last });
+    }
+
+    #[test]
+    fn it_produces_ast_for_select_with_where_clause_and_limit() {
+        let query = "SELECT title, severity FROM 'app.log' WHERE title = 'Network connection failed' LIMIT LAST 10".into();
+        let mut parser = Parser::new(query);
+        let ast_or_err = parser.parse();
+
+        assert!(ast_or_err.is_ok());
+        let ast = ast_or_err.unwrap();
+
+        let right_node = *ast.right.unwrap().clone();
+
+
+        let left_result_node = &right_node.left.unwrap();
+        let right_result_node = &right_node.right.unwrap();
+
+        assert_eq!(left_result_node.entry, GrammarItem::Condition { field: "title".into(), value: "Network connection failed".into() });
+        assert_eq!(right_result_node.entry, GrammarItem::Limit { number_of_rows: 10, direction: LimitDirection::Last });
     }
 }
