@@ -8,7 +8,7 @@ pub enum GrammarItem {
     Query,
     LogFile { fields: Vec<String>, filename: String },
     Condition { field: String, value: String },
-    Limit { number_of_rows: i64, direction: LimitDirection },
+    Limit { number_of_rows: usize, direction: LimitDirection },
     LogResult
 }
 
@@ -120,7 +120,7 @@ impl Parser {
         }
     }
 
-    fn expect_number(&self, expected_number: Option<i64>) -> Result<i64, String> {
+    fn expect_number(&self, expected_number: Option<usize>) -> Result<usize, String> {
         match self.current_token() {
             Some(&lexer::LexItem::Number(ref num)) => {
                 if expected_number.is_some() {
@@ -385,6 +385,14 @@ mod tests {
     #[test]
     fn it_returns_error_for_query_with_limit_and_where_in_the_wrong_order() {
         let query = "SELECT title, severity FROM 'app.log' LIMIT LAST 10 WHERE title = 'Network connection failed'".into();
+        let mut parser = Parser::new(query);
+        let expected_err = parser.parse();
+        assert!(expected_err.is_err());
+    }
+
+    #[test]
+    fn it_raises_an_error_when_limit_number_is_negative() {
+        let query = "SELECT title, severity FROM 'app.log' LIMIT LAST -10".into();
         let mut parser = Parser::new(query);
         let expected_err = parser.parse();
         assert!(expected_err.is_err());

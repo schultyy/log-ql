@@ -6,7 +6,7 @@ pub enum LexItem {
     Identifier(String),
     Str(String),
     Equals,
-    Number(i64),
+    Number(usize),
     Comma,
     EOF
 }
@@ -41,13 +41,13 @@ fn consume_identifier<T: Iterator<Item = char>>(iter: &mut Peekable<T>) -> Strin
     resulting_str
 }
 
-fn consume_number<T: Iterator<Item = char>>(c: char, iter: &mut Peekable<T>) -> i64 {
+fn consume_number<T: Iterator<Item = char>>(c: char, iter: &mut Peekable<T>) -> usize {
     let mut number = c.to_string().parse::<i64>().expect("Expected digit");
     while let Some(Ok(digit)) = iter.peek().map(|c| c.to_string().parse::<i64>()) {
         number = number * 10 + digit;
         iter.next();
     }
-    number
+    number as usize
 }
 
 pub fn tokenize(input: &String) -> Result<Vec<LexItem>, String> {
