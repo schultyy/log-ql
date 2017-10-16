@@ -7,7 +7,7 @@ use lexer::LexItem;
 pub enum GrammarItem {
     Query,
     LogFile { fields: Vec<String>, filename: String },
-    Condition { field: String, value: String },
+    Condition { field: String, mode: WhereComparator, value: String },
     Limit { number_of_rows: usize, direction: LimitDirection },
     LogResult
 }
@@ -18,6 +18,14 @@ pub enum GrammarItem {
 pub enum LimitDirection {
     First,
     Last
+}
+
+#[derive(Debug)]
+#[derive(PartialEq)]
+#[derive(Clone)]
+pub enum WhereComparator {
+    StrictEquals,
+    Like
 }
 
 #[derive(Debug)]
@@ -168,12 +176,23 @@ impl Parser {
         self.consume_token();
         let log_file_field = try!(self.expect_identifier(None));
         self.consume_token();
-        try!(self.expect_equals());
-        self.consume_token();
+
+        let where_comparator;
+
+        if let Ok(_) = self.expect_equals() {
+            where_comparator = WhereComparator::StrictEquals;
+            self.consume_token();
+        } else if let Ok(_) = self.expect_identifier(Some("LIKE")) {
+            where_comparator = WhereComparator::Like;
+            self.consume_token();
+        } else {
+            return Err(format!("Expected '=' or LIKE, got {:?}", self.current_token()))
+        }
+
         let log_where_clause_value = try!(self.parse_log_file_where_value());
         self.consume_token();
 
-        Ok(ASTNode::new(GrammarItem::Condition { field: log_file_field, value: log_where_clause_value }, None, None))
+        Ok(ASTNode::new(GrammarItem::Condition { field: log_file_field, mode: where_comparator, value: log_where_clause_value }, None, None))
     }
 
     fn parse_limit(&mut self) -> Result<ASTNode, String> {
@@ -275,7 +294,7 @@ mod tests {
         assert_eq!(ast.entry, GrammarItem::Query);
         assert_eq!(ast.left.unwrap().entry, GrammarItem::LogFile { filename: "app.log".into(), fields: vec!("title".into()) });
         let right_node = ast.right.unwrap();
-        assert_eq!(right_node.left.unwrap().entry, GrammarItem::Condition { field: "severity".into(), value: "error".into() });
+        assert_eq!(right_node.left.unwrap().entry, GrammarItem::Condition { field: "severity".into(), mode: WhereComparator::StrictEquals, value: "error".into() });
     }
 
     #[test]
@@ -286,7 +305,7 @@ mod tests {
         assert_eq!(ast.entry, GrammarItem::Query);
         assert_eq!(ast.left.unwrap().entry, GrammarItem::LogFile { filename: "app.log".into(), fields: vec!("title".into(), "severity".into(), "date".into()) });
         let right_node = ast.right.unwrap();
-        assert_eq!(right_node.left.unwrap().entry, GrammarItem::Condition { field: "severity".into(), value: "error".into() });
+        assert_eq!(right_node.left.unwrap().entry, GrammarItem::Condition { field: "severity".into(), mode: WhereComparator::StrictEquals, value: "error".into() });
     }
 
     #[test]
@@ -378,7 +397,7 @@ mod tests {
         let left_result_node = &right_node.left.unwrap();
         let right_result_node = &right_node.right.unwrap();
 
-        assert_eq!(left_result_node.entry, GrammarItem::Condition { field: "title".into(), value: "Network connection failed".into() });
+        assert_eq!(left_result_node.entry, GrammarItem::Condition { field: "title".into(), mode: WhereComparator::StrictEquals, value: "Network connection failed".into() });
         assert_eq!(right_result_node.entry, GrammarItem::Limit { number_of_rows: 10, direction: LimitDirection::Last });
     }
 
@@ -396,5 +415,47 @@ mod tests {
         let mut parser = Parser::new(query);
         let expected_err = parser.parse();
         assert!(expected_err.is_err());
+    }
+
+    #[test]
+    fn it_returns_ast_for_where_clause_with_like_operator() {
+        let query = "SELECT title, severity FROM 'app.log' WHERE title LIKE 'dies, das'".into();
+
+        let mut parser = Parser::new(query);
+        let ast = parser.parse().unwrap();
+        let right_node = *ast.right.unwrap().clone();
+        let conditional_node = &right_node.left.unwrap();
+
+        assert_eq!(conditional_node.entry, GrammarItem::Condition { field: "title".into(), mode: WhereComparator::Like, value: "dies, das".into() });
+    }
+
+    #[test]
+    fn it_fails_when_where_does_not_have_like_or_equals() {
+        let query = "SELECT title, severity FROM 'app.log' WHERE title 'dies, das'".into();
+
+        let mut parser = Parser::new(query);
+        let ast = parser.parse();
+
+        assert!(ast.is_err());
+    }
+
+    #[test]
+    fn it_fails_when_where_does_have_unexpected_keyword() {
+        let query = "SELECT title, severity FROM 'app.log' WHERE title Foo 'dies, das'".into();
+
+        let mut parser = Parser::new(query);
+        let ast = parser.parse();
+
+        assert!(ast.is_err());
+    }
+
+    #[test]
+    fn it_fails_when_where_does_have_like_in_lower_case() {
+        let query = "SELECT title, severity FROM 'app.log' WHERE title like 'dies, das'".into();
+
+        let mut parser = Parser::new(query);
+        let ast = parser.parse();
+
+        assert!(ast.is_err());
     }
 }
