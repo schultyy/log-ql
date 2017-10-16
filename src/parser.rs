@@ -428,4 +428,34 @@ mod tests {
 
         assert_eq!(conditional_node.entry, GrammarItem::Condition { field: "title".into(), mode: WhereComparator::Like, value: "dies, das".into() });
     }
+
+    #[test]
+    fn it_fails_when_where_does_not_have_like_or_equals() {
+        let query = "SELECT title, severity FROM 'app.log' WHERE title 'dies, das'".into();
+
+        let mut parser = Parser::new(query);
+        let ast = parser.parse();
+
+        assert!(ast.is_err());
+    }
+
+    #[test]
+    fn it_fails_when_where_does_have_unexpected_keyword() {
+        let query = "SELECT title, severity FROM 'app.log' WHERE title Foo 'dies, das'".into();
+
+        let mut parser = Parser::new(query);
+        let ast = parser.parse();
+
+        assert!(ast.is_err());
+    }
+
+    #[test]
+    fn it_fails_when_where_does_have_like_in_lower_case() {
+        let query = "SELECT title, severity FROM 'app.log' WHERE title like 'dies, das'".into();
+
+        let mut parser = Parser::new(query);
+        let ast = parser.parse();
+
+        assert!(ast.is_err());
+    }
 }
